@@ -9,12 +9,6 @@ inputs:
   github_token:
     description: 'GitHub token for API access'
     required: true
-  organization:
-    description: 'GitHub organization to analyze'
-    required: false
-  repository:
-    description: 'Specific repository to analyze (format: owner/repo)'
-    required: false
   output_format:
     description: 'Output format for report (markdown or json)'
     required: false
@@ -28,10 +22,8 @@ runs:
   image: ihavespoons/action-control:latest
   args:
     - enforce
-    - '--org'
-    - ${{ inputs.organization }}
     - '--repo'
-    - ${{ inputs.repository }}
+    - ${{ github.repository }}
     - '--output'
     - ${{ inputs.output_format }}
 

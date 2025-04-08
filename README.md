@@ -5,11 +5,12 @@ A CLI tool to report and enforce GitHub Actions usage policies.
 ## Features
 
 - **Report**: Generate reports of GitHub Actions usage across repositories
-- **Enforce**: Enforce policies on which actions are allowed in repositories
+- **Enforce**: Enforce policies on which actions are allowed or denied in repositories
 - **Export**: Generate policy files based on currently used actions
 - Supports organization-wide scans or single repository analysis
 - Multiple output formats (markdown, JSON)
 - Repository-specific policy overrides
+- Flexible policy modes: allow-list or deny-list
 
 ## Installation
 
@@ -113,8 +114,11 @@ The command will exit with an error code if any violations are found.
 Generate a policy file based on currently used actions:
 
 ```bash
-# Create a policy from all actions used in an organization
+# Create an allow-mode policy from all actions used in an organization
 action-control export --org your-organization
+
+# Create a deny-mode policy
+action-control export --org your-organization --policy-mode deny
 
 # Create a policy with version information included
 action-control export --org your-organization --include-versions
@@ -134,6 +138,7 @@ action-control export --repo owner/repo-name
 The export command supports the following options:
 
 - `--file`: Specify the output file path (default: policy.yaml)
+- `--policy-mode`: Select the policy mode (allow or deny, default: allow)
 - `--include-versions`: Include version tags in action references
 - `--include-custom`: Generate repository-specific custom rules
 - `--org`: Specify the organization to scan
@@ -173,14 +178,13 @@ action-control enforce --org your-organization
 
 You can use Action Control directly in your GitHub workflows:
 
-### Example: Enforce policy
-
 ```yaml
 name: GitHub Actions Policy Enforcement
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Daily
+    - cron: '0 0 * * 1'  # Run every Monday
+  workflow_dispatch:  # Allow manual trigger
   pull_request:
     paths:
       - '.github/workflows/**'  # Run when workflow files change
@@ -189,24 +193,29 @@ jobs:
   enforce:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        
-      - name: Enforce Actions Policy
+      - name: Enforce GitHub Actions Policy
         uses: ihavespoons/action-control@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          organization: your-organization
-          policy_file: .github/policies/actions-policy.yaml
+          policy_content: |
+            policy_mode: allow
+            allowed_actions:
+              - actions/checkout@v3
+              - actions/setup-node@v4
+              - actions/cache@v3
+            excluded_repos:
+              - your-org/sandbox-repo
 ```
 
 ## GitHub Action Configuration
 
-When using the GitHub Action, the policy configuration is provided through the `policy_content` input parameter. This allows for dynamic policy configuration without needing to commit policy files to your repository.
+When using the GitHub Action, it automatically analyzes the current repository. The policy configuration is provided through the `policy_content` input parameter, which allows for dynamic policy configuration without needing to commit policy files to your repository.
 
 **Note**: When running as a GitHub Action, local policy files are ignored, and only the policy content provided through the `policy_content` input is used. This ensures consistent enforcement across environments.
 
-### Example: Using Policy Content in a GitHub Workflow
+### Using Policy Content from Variables
+
+You can also store your policy in GitHub variables or secrets:
 
 ```yaml
 name: Enforce GitHub Actions Policy
@@ -224,15 +233,7 @@ jobs:
         uses: ihavespoons/action-control@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          organization: your-organization
-          policy_content: |
-            policy_mode: allow
-            allowed_actions:
-              - actions/checkout@v3
-              - actions/setup-node@v4
-              - actions/cache@v3
-            excluded_repos:
-              - your-org/sandbox-repo
+          policy_content: ${{ vars.ACTION_CONTROL_POLICY_CONTENT }}
 ```
 
 ## Development
@@ -262,38 +263,3 @@ make build
 ```
 
 The binary will be created in the `bin/` directory.
-
-## 5. Example of a Complete Workflow File
-
-```yaml
-name: Enforce GitHub Actions Policy
-
-on:
-  schedule:
-    - cron: '0 0 * * 1'  # Run every Monday
-  workflow_dispatch:  # Allow manual trigger
-  push:
-    paths:
-      - '.github/workflows/**'  # Run when workflows change
-
-jobs:
-  enforce-policy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enforce GitHub Actions Policy
-        uses: ihavespoons/action-control@main
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          organization: your-organization
-          policy_content: ${{ vars.ACTION_CONTROL_POLICY_CONTENT }}
-```
-
-## Testing the Feature
-
-You can test this feature by:
-
-1. Setting the `ACTION_CONTROL_POLICY_CONTENT` environment variable
-2. Running the CLI with the `--ignore-local-policy` flag
-3. Verifying that it uses the policy content from the environment variable instead of any local policy files
-
-This implementation allows the GitHub Action to exclusively use the policy provided through the environment variable, completely ignoring any local policy files, while still allowing the normal CLI usage to work with local policy files.

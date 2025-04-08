@@ -42,8 +42,8 @@ func TestActionYaml(t *testing.T) {
 		t.Fatal("Inputs section is not properly formatted")
 	}
 
-	// Updated required inputs - policy_content is required, not policy_file
-	requiredInputs := []string{"github_token", "organization", "repository", "output_format", "policy_content"}
+	// Updated required inputs - removed organization input
+	requiredInputs := []string{"github_token", "output_format", "policy_content"}
 	for _, input := range requiredInputs {
 		inputConfig, exists := inputs[input].(map[string]interface{})
 		if !exists {
@@ -98,16 +98,18 @@ func TestActionYaml(t *testing.T) {
 			t.Error("The first arg should be 'enforce' command")
 		}
 
-		// Check that organization flag is included
-		hasOrgFlag := false
+		// Check that repository flag is included with github.repository
+		hasRepoFlag := false
 		for i, arg := range args {
-			if arg == "--org" && i+1 < len(args) {
-				hasOrgFlag = true
-				break
+			if arg == "--repo" && i+1 < len(args) {
+				if args[i+1] == "${{ github.repository }}" {
+					hasRepoFlag = true
+					break
+				}
 			}
 		}
-		if !hasOrgFlag {
-			t.Error("Args should include '--org' flag")
+		if !hasRepoFlag {
+			t.Error("Args should include '--repo' flag with github.repository variable")
 		}
 	}
 
@@ -122,7 +124,7 @@ func TestActionYaml(t *testing.T) {
 			"ACTION_CONTROL_POLICY_CONTENT",
 		}
 
-		for _, envVar := range requiredEnvVars {
+		for _, envVar := requiredEnvVars {
 			if _, exists := env[envVar]; !exists {
 				t.Errorf("%s environment variable should be defined", envVar)
 			}

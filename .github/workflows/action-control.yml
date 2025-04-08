@@ -1,0 +1,16 @@
+name: Enforce GitHub Actions Policy
+
+on:
+  pull_request:
+      branches: [main]  # Trigger on pull requests to the main branch
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  enforce-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce GitHub Actions Policy
+        uses: ihavespoons/action-control@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          policy_content: ${{ vars.ACTION_CONTROL_POLICY_CONTENT}}

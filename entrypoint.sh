@@ -17,5 +17,6 @@ fi
 CMD="$1"
 shift
 
-# Run the action-control command with appropriate arguments
-exec /app/action-control "$CMD" --org "$2" --repo "$4" --output "$6" $IGNORE_FLAG
+# Run the action-control command with appropriate arguments - using fixed positions
+# We know the command structure is enforce --repo REPO --output FORMAT
+exec /app/action-control "$CMD" --repo "$2" --output "$4" $IGNORE_FLAG
