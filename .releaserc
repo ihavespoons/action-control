@@ -65,7 +65,6 @@ plugins:
     - preset: conventionalcommits
       presetConfig:
         types: *types
-  - "@semantic-release/changelog"
   
 ### CUT ###
   - "@semantic-release/github"
