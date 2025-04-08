@@ -200,6 +200,41 @@ jobs:
           policy_file: .github/policies/actions-policy.yaml
 ```
 
+## GitHub Action Configuration
+
+When using the GitHub Action, the policy configuration is provided through the `policy_content` input parameter. This allows for dynamic policy configuration without needing to commit policy files to your repository.
+
+**Note**: When running as a GitHub Action, local policy files are ignored, and only the policy content provided through the `policy_content` input is used. This ensures consistent enforcement across environments.
+
+### Example: Using Policy Content in a GitHub Workflow
+
+```yaml
+name: Enforce GitHub Actions Policy
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Run every Monday
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  enforce-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce GitHub Actions Policy
+        uses: ihavespoons/action-control@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          organization: your-organization
+          policy_content: |
+            policy_mode: allow
+            allowed_actions:
+              - actions/checkout@v3
+              - actions/setup-node@v4
+              - actions/cache@v3
+            excluded_repos:
+              - your-org/sandbox-repo
+```
+
 ## Development
 
 ### Testing
@@ -227,3 +262,38 @@ make build
 ```
 
 The binary will be created in the `bin/` directory.
+
+## 5. Example of a Complete Workflow File
+
+```yaml
+name: Enforce GitHub Actions Policy
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Run every Monday
+  workflow_dispatch:  # Allow manual trigger
+  push:
+    paths:
+      - '.github/workflows/**'  # Run when workflows change
+
+jobs:
+  enforce-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce GitHub Actions Policy
+        uses: ihavespoons/action-control@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          organization: your-organization
+          policy_content: ${{ vars.ACTION_CONTROL_POLICY_CONTENT }}
+```
+
+## Testing the Feature
+
+You can test this feature by:
+
+1. Setting the `ACTION_CONTROL_POLICY_CONTENT` environment variable
+2. Running the CLI with the `--ignore-local-policy` flag
+3. Verifying that it uses the policy content from the environment variable instead of any local policy files
+
+This implementation allows the GitHub Action to exclusively use the policy provided through the environment variable, completely ignoring any local policy files, while still allowing the normal CLI usage to work with local policy files.

@@ -58,6 +58,8 @@ func main() {
 	rootCmd.PersistentFlags().String("output", "", "Output format (markdown or json)")
 
 	enforceCmd.Flags().String("policy", "policy.yaml", "Path to policy configuration file")
+	enforceCmd.Flags().Bool("ignore-local-policy", false, "Ignore local policy files and only use provided policy") // Add this line
+	enforceCmd.Flags().MarkHidden("ignore-local-policy")                                                            // Hide this flag from help output
 
 	exportCmd.Flags().String("file", "policy.yaml", "Output file path for generated policy")
 	exportCmd.Flags().Bool("include-versions", false, "Include version tags in action references")
@@ -70,6 +72,7 @@ func main() {
 	viper.BindPFlag("output_format", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 	viper.BindPFlag("policy_file", enforceCmd.Flags().Lookup("policy"))
+	viper.BindPFlag("ignore_local_policy", enforceCmd.Flags().Lookup("ignore-local-policy")) // Add this line
 	viper.BindPFlag("export_file", exportCmd.Flags().Lookup("file"))
 	viper.BindPFlag("include_versions", exportCmd.Flags().Lookup("include-versions"))
 	viper.BindPFlag("include_custom", exportCmd.Flags().Lookup("include-custom"))
@@ -182,15 +185,48 @@ func runEnforce() {
 		log.Fatal("Either organization (--org) or specific repository (--repo) must be provided.")
 	}
 
-	policyFile := viper.GetString("policy_file")
-	if policyFile == "" {
-		policyFile = "policy.yaml"
-	}
+	// Check if we should use policy content from environment variable
+	policyContent := os.Getenv("ACTION_CONTROL_POLICY_CONTENT")
+	ignoreLocalPolicy := viper.GetBool("ignore_local_policy")
 
-	// Load local policy
-	localPolicy, err := policy.LoadPolicyConfig(policyFile)
-	if err != nil {
-		log.Fatalf("Error loading policy file: %v", err)
+	var localPolicy *policy.PolicyConfig
+	var err error
+
+	if policyContent != "" && ignoreLocalPolicy {
+		// Use policy content from environment variable
+		log.Println("Using policy from environment variable")
+
+		// Create a temporary file for the policy content
+		tmpFile, err := os.CreateTemp("", "policy-*.yaml")
+		if err != nil {
+			log.Fatalf("Error creating temporary policy file: %v", err)
+		}
+		defer os.Remove(tmpFile.Name()) // Clean up
+
+		// Write the policy content to the temporary file
+		if _, err := tmpFile.WriteString(policyContent); err != nil {
+			tmpFile.Close()
+			log.Fatalf("Error writing to temporary policy file: %v", err)
+		}
+		tmpFile.Close()
+
+		// Load the policy from the temporary file
+		localPolicy, err = policy.LoadPolicyConfig(tmpFile.Name())
+		if err != nil {
+			log.Fatalf("Error loading policy from environment variable: %v", err)
+		}
+	} else {
+		// Use policy file
+		policyFile := viper.GetString("policy_file")
+		if policyFile == "" {
+			policyFile = "policy.yaml"
+		}
+
+		// Load local policy
+		localPolicy, err = policy.LoadPolicyConfig(policyFile)
+		if err != nil {
+			log.Fatalf("Error loading policy file: %v", err)
+		}
 	}
 
 	client := github.NewClient(token)
@@ -240,15 +276,17 @@ func runEnforce() {
 		var repoPolicy *policy.PolicyConfig
 		repoPolicy = localPolicy // Start with local policy
 
-		// Try to get repo policy file if it exists
-		repoPolicyContent, err := client.GetRepositoryContent(ctx, owner, repoName, ".github/action-control-policy.yaml")
-		if err == nil && len(repoPolicyContent) > 0 {
-			// Merge with local policy
-			repoPolicy, err = policy.MergeRepoPolicy(localPolicy, repoPolicyContent, repoFullName)
-			if err != nil {
-				log.Printf("Warning: Could not parse policy file in repository %s: %v", repoFullName, err)
-				// Fall back to local policy
-				repoPolicy = localPolicy
+		if !ignoreLocalPolicy { // Add this block
+			// Try to get repo policy file if it exists
+			repoPolicyContent, err := client.GetRepositoryContent(ctx, owner, repoName, ".github/action-control-policy.yaml")
+			if err == nil && len(repoPolicyContent) > 0 {
+				// Merge with local policy
+				repoPolicy, err = policy.MergeRepoPolicy(localPolicy, repoPolicyContent, repoFullName)
+				if err != nil {
+					log.Printf("Warning: Could not parse policy file in repository %s: %v", repoFullName, err)
+					// Fall back to local policy
+					repoPolicy = localPolicy
+				}
 			}
 		}
 
