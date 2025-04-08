@@ -147,8 +147,8 @@ func TestDockerfile(t *testing.T) {
 	}
 
 	// Check for build architecture handling
-	if !strings.Contains(content, "BUILDARCH") {
-		t.Error("Dockerfile should use BUILDARCH argument")
+	if !strings.Contains(content, "TARGETARCH") {
+		t.Error("Dockerfile should use TARGETARCH argument")
 	}
 }
 
