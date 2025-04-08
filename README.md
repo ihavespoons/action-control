@@ -38,14 +38,23 @@ export ACTION_CONTROL_ORGANIZATION="your-org"
 
 ## Policy Configuration
 
-Create a `policy.yaml` file to define allowed actions:
+Create a `policy.yaml` file to define allowed or denied actions:
 
 ```yaml
-# Default allowed actions for all repositories
+# Choose policy mode: "allow" or "deny"
+policy_mode: "allow"  # Default if omitted
+
+# In "allow" mode: Only these actions are allowed
 allowed_actions:
   - "actions/checkout"
   - "actions/setup-node"
   # Add more allowed actions...
+
+# In "deny" mode: These actions are explicitly forbidden
+denied_actions:
+  - "unauthorized/action"
+  - "security-risk/action"
+  # Add more denied actions...
 
 # Repositories excluded from policy enforcement
 excluded_repos:
@@ -54,10 +63,19 @@ excluded_repos:
 # Custom rules for specific repositories
 custom_rules:
   "your-org/special-repo":
-    allowed_actions:
-      - "actions/checkout"
-      - "custom/special-action"
+    policy_mode: "deny"  # Can override the global mode
+    denied_actions:
+      - "custom/special-action-to-deny"
 ```
+
+### Policy Modes
+
+Action Control supports two policy modes:
+
+1. **Allow Mode (Default)**: Only actions explicitly listed in `allowed_actions` are permitted. All others are denied.
+2. **Deny Mode**: All actions are permitted except those explicitly listed in `denied_actions`.
+
+You can set the mode globally with `policy_mode`, or override it for specific repositories in `custom_rules`.
 
 ## Repository-specific Policy
 
@@ -122,30 +140,6 @@ The export command supports the following options:
 - `--repo`: Specify a single repository to scan (format: owner/repo)
 
 ## Integrating with CI/CD
-
-You can integrate action-control into your CI/CD pipelines to enforce policies automatically:
-
-```yaml
-name: Enforce Action Policies
-
-on:
-  schedule:
-    - cron: '0 0 * * *'  # Run daily
-  workflow_dispatch:     # Allow manual trigger
-
-jobs:
-  enforce:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-      - name: Install action-control
-        run: go install github.com/ihavespoons/action-control@latest
-      - name: Check policy compliance
-        run: action-control enforce --org your-organization
-        env:
-          ACTION_CONTROL_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
 
 ## Use Cases
 

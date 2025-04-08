@@ -3,21 +3,24 @@ package policy
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// PolicyConfig represents the configuration for GitHub action policies
+// PolicyConfig defines the structure for the policy configuration file
 type PolicyConfig struct {
-	AllowedActions []string          `yaml:"allowed_actions"`
-	ExcludedRepos  []string          `yaml:"excluded_repos"`
-	CustomRules    map[string]Policy `yaml:"custom_rules"` // Repository-specific rules
+	AllowedActions []string          `yaml:"allowed_actions,omitempty"`
+	DeniedActions  []string          `yaml:"denied_actions,omitempty"`
+	ExcludedRepos  []string          `yaml:"excluded_repos,omitempty"`
+	CustomRules    map[string]Policy `yaml:"custom_rules,omitempty"`
+	PolicyMode     string            `yaml:"policy_mode,omitempty"` // "allow" or "deny"
 }
 
-// Policy represents a specific policy for a repository
+// Policy defines repository-specific policy
 type Policy struct {
-	AllowedActions []string `yaml:"allowed_actions"`
+	AllowedActions []string `yaml:"allowed_actions,omitempty"`
+	DeniedActions  []string `yaml:"denied_actions,omitempty"`
+	PolicyMode     string   `yaml:"policy_mode,omitempty"` // "allow" or "deny"
 }
 
 // LoadPolicyConfig loads policy configuration from the specified file
@@ -32,89 +35,172 @@ func LoadPolicyConfig(configPath string) (*PolicyConfig, error) {
 		return nil, fmt.Errorf("failed to parse policy config: %w", err)
 	}
 
+	// Set default policy mode if not specified
+	if config.PolicyMode == "" {
+		if len(config.AllowedActions) > 0 {
+			config.PolicyMode = "allow"
+		} else if len(config.DeniedActions) > 0 {
+			config.PolicyMode = "deny"
+		} else {
+			config.PolicyMode = "allow" // Default to allow mode if neither is specified
+		}
+	}
+
 	return &config, nil
 }
 
-// MergeRepoPolicy merges the local policy with repo-specific policy if available
-func MergeRepoPolicy(localPolicy *PolicyConfig, repoConfigData []byte, repoName string) (*PolicyConfig, error) {
-	// Start with a copy of the local policy
+// MergeRepoPolicy merges repository-specific policy with global policy
+func MergeRepoPolicy(globalPolicy *PolicyConfig, repoPolicyContent []byte, repoName string) (*PolicyConfig, error) {
+	// Create a deep copy of the global policy
 	mergedPolicy := &PolicyConfig{
-		AllowedActions: make([]string, len(localPolicy.AllowedActions)),
-		ExcludedRepos:  make([]string, len(localPolicy.ExcludedRepos)),
+		AllowedActions: make([]string, len(globalPolicy.AllowedActions)),
+		DeniedActions:  make([]string, len(globalPolicy.DeniedActions)),
+		ExcludedRepos:  make([]string, len(globalPolicy.ExcludedRepos)),
 		CustomRules:    make(map[string]Policy),
+		PolicyMode:     globalPolicy.PolicyMode,
 	}
 
-	copy(mergedPolicy.AllowedActions, localPolicy.AllowedActions)
-	copy(mergedPolicy.ExcludedRepos, localPolicy.ExcludedRepos)
-	for k, v := range localPolicy.CustomRules {
+	// Copy slices and map
+	copy(mergedPolicy.AllowedActions, globalPolicy.AllowedActions)
+	copy(mergedPolicy.DeniedActions, globalPolicy.DeniedActions)
+	copy(mergedPolicy.ExcludedRepos, globalPolicy.ExcludedRepos)
+	for k, v := range globalPolicy.CustomRules {
 		mergedPolicy.CustomRules[k] = v
 	}
 
-	// If we have repo-specific config data, parse and merge it
-	if len(repoConfigData) > 0 {
-		var repoPolicy PolicyConfig
-		if err := yaml.Unmarshal(repoConfigData, &repoPolicy); err != nil {
-			return nil, fmt.Errorf("failed to parse repo policy: %w", err)
+	// Parse repo policy
+	var repoPolicy PolicyConfig
+	if err := yaml.Unmarshal(repoPolicyContent, &repoPolicy); err != nil {
+		return nil, fmt.Errorf("failed to parse repository policy: %w", err)
+	}
+
+	// Apply repo-specific overrides if provided
+	customRule, exists := repoPolicy.CustomRules[repoName]
+	if exists {
+		mergedPolicy.CustomRules[repoName] = customRule
+	} else if len(repoPolicy.AllowedActions) > 0 || len(repoPolicy.DeniedActions) > 0 {
+		// If repo doesn't have a specific custom rule but has global actions,
+		// create a custom rule for it
+		policy := Policy{
+			AllowedActions: repoPolicy.AllowedActions,
+			DeniedActions:  repoPolicy.DeniedActions,
 		}
 
-		// If this repo has specific rules in the repo policy, add them to the merged policy
-		if repoRule, exists := repoPolicy.CustomRules[repoName]; exists {
-			mergedPolicy.CustomRules[repoName] = repoRule
+		// Set policy mode for the repo if specified, otherwise inherit
+		if repoPolicy.PolicyMode != "" {
+			policy.PolicyMode = repoPolicy.PolicyMode
+		} else {
+			policy.PolicyMode = determineRepoMode(policy, globalPolicy.PolicyMode)
 		}
+
+		mergedPolicy.CustomRules[repoName] = policy
 	}
 
 	return mergedPolicy, nil
 }
 
-// CheckActionCompliance checks if all the actions in a repository comply with policy
+// determineRepoMode figures out the appropriate policy mode for a repository
+func determineRepoMode(policy Policy, defaultMode string) string {
+	if policy.PolicyMode != "" {
+		return policy.PolicyMode
+	}
+
+	if len(policy.AllowedActions) > 0 {
+		return "allow"
+	} else if len(policy.DeniedActions) > 0 {
+		return "deny"
+	}
+
+	return defaultMode
+}
+
+// CheckActionCompliance verifies that all actions comply with the policy
 func CheckActionCompliance(policy *PolicyConfig, repoName string, actions []string) ([]string, bool) {
-	// Check if repo is excluded from policy enforcement
+	// Check if repository is excluded from policy
 	for _, excludedRepo := range policy.ExcludedRepos {
-		if strings.EqualFold(repoName, excludedRepo) {
-			return nil, true
+		if excludedRepo == repoName {
+			return nil, true // Repository is excluded, so it's compliant
 		}
 	}
 
-	// Determine which list of allowed actions to use
-	allowedActions := policy.AllowedActions
+	// Determine which policy to apply (global or custom)
+	var allowedActions, deniedActions []string
+	var policyMode string
 
-	// If there's a custom policy for this repo, use that instead
 	if customPolicy, exists := policy.CustomRules[repoName]; exists {
+		// Use custom policy for this repository
 		allowedActions = customPolicy.AllowedActions
+		deniedActions = customPolicy.DeniedActions
+		policyMode = customPolicy.PolicyMode
+
+		// If custom policy mode is not specified, inherit from global
+		if policyMode == "" {
+			policyMode = policy.PolicyMode
+		}
+
+		// If custom policy doesn't specify actions for its mode, inherit from global
+		if policyMode == "allow" && len(allowedActions) == 0 {
+			allowedActions = policy.AllowedActions
+		} else if policyMode == "deny" && len(deniedActions) == 0 {
+			deniedActions = policy.DeniedActions
+		}
+	} else {
+		// Use global policy
+		allowedActions = policy.AllowedActions
+		deniedActions = policy.DeniedActions
+		policyMode = policy.PolicyMode
 	}
 
-	// Convert allowed actions to a map for faster lookups
-	allowedMap := make(map[string]bool)
-	for _, action := range allowedActions {
-		allowedMap[normalizeActionName(action)] = true
+	// Default to allow mode if not specified
+	if policyMode == "" {
+		if len(allowedActions) > 0 {
+			policyMode = "allow"
+		} else if len(deniedActions) > 0 {
+			policyMode = "deny"
+		} else {
+			policyMode = "allow" // Default fallback
+		}
 	}
 
-	// Check each action against the allowed list
+	// Check actions against policy
 	var violations []string
-	for _, action := range actions {
-		normalized := normalizeActionName(action)
-		if !allowedMap[normalized] {
-			violations = append(violations, action)
+
+	// Normalize actions by removing version info for policy checking
+	for _, actionWithVersion := range actions {
+		action := normalizeAction(actionWithVersion)
+
+		if policyMode == "allow" {
+			// In allow mode, action must be in the allowed list
+			if !contains(allowedActions, action) && !contains(allowedActions, actionWithVersion) {
+				violations = append(violations, actionWithVersion)
+			}
+		} else if policyMode == "deny" {
+			// In deny mode, action must NOT be in the denied list
+			if contains(deniedActions, action) || contains(deniedActions, actionWithVersion) {
+				violations = append(violations, actionWithVersion)
+			}
 		}
 	}
 
 	return violations, len(violations) == 0
 }
 
-// normalizeActionName standardizes action names for comparison
-func normalizeActionName(action string) string {
-	// Remove version/tag if present
-	if idx := strings.LastIndex(action, "@"); idx != -1 {
-		action = action[:idx]
+// normalizeAction removes version info from action string
+func normalizeAction(action string) string {
+	for i := 0; i < len(action); i++ {
+		if action[i] == '@' {
+			return action[:i]
+		}
 	}
-	return strings.ToLower(action)
+	return action
 }
 
-// GenerateEmptyConfig creates an empty policy configuration
-func GenerateEmptyConfig() *PolicyConfig {
-	return &PolicyConfig{
-		AllowedActions: []string{},
-		ExcludedRepos:  []string{},
-		CustomRules:    make(map[string]Policy),
+// contains checks if a string slice contains a specific string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
 	}
+	return false
 }

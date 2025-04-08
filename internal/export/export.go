@@ -19,6 +19,7 @@ type ActionExporter struct {
 	IncludeVersions bool   // Whether to include version tags in exported actions
 	OutputPath      string // Where to write the policy file
 	IncludeCustom   bool   // Whether to include custom rules for each repository
+	PolicyMode      string // Which policy mode to use ("allow" or "deny")
 }
 
 // NewExporter creates a new ActionExporter with default configuration
@@ -27,6 +28,7 @@ func NewExporter() *ActionExporter {
 		IncludeVersions: false,
 		OutputPath:      "policy.yaml",
 		IncludeCustom:   false,
+		PolicyMode:      "allow", // Default to allow list
 	}
 }
 
@@ -34,9 +36,18 @@ func NewExporter() *ActionExporter {
 func (e *ActionExporter) GeneratePolicyFromActions(actionsMap map[string][]github.Action) (*policy.PolicyConfig, error) {
 	// Create a new policy config
 	policyConfig := &policy.PolicyConfig{
-		AllowedActions: []string{},
-		ExcludedRepos:  []string{},
-		CustomRules:    make(map[string]policy.Policy),
+		PolicyMode:    e.PolicyMode,
+		ExcludedRepos: []string{},
+		CustomRules:   make(map[string]policy.Policy),
+	}
+
+	// Initialize the appropriate list based on policy mode
+	if e.PolicyMode == "allow" {
+		policyConfig.AllowedActions = []string{}
+	} else if e.PolicyMode == "deny" {
+		policyConfig.DeniedActions = []string{}
+	} else {
+		return nil, fmt.Errorf("invalid policy mode: %s, must be 'allow' or 'deny'", e.PolicyMode)
 	}
 
 	// Track unique actions
@@ -47,17 +58,36 @@ func (e *ActionExporter) GeneratePolicyFromActions(actionsMap map[string][]githu
 		// If we're including custom rules, create a policy for this repo
 		if e.IncludeCustom {
 			repoPolicy := policy.Policy{
-				AllowedActions: []string{},
+				PolicyMode: e.PolicyMode,
+			}
+
+			// Initialize the appropriate list based on policy mode
+			if e.PolicyMode == "allow" {
+				repoPolicy.AllowedActions = []string{}
+			} else if e.PolicyMode == "deny" {
+				repoPolicy.DeniedActions = []string{}
 			}
 
 			for _, action := range actions {
 				actionName := normalizeActionName(action.Uses, e.IncludeVersions)
-				repoPolicy.AllowedActions = append(repoPolicy.AllowedActions, actionName)
+
+				// Add to repository policy
+				if e.PolicyMode == "allow" {
+					repoPolicy.AllowedActions = append(repoPolicy.AllowedActions, actionName)
+				} else if e.PolicyMode == "deny" {
+					repoPolicy.DeniedActions = append(repoPolicy.DeniedActions, actionName)
+				}
+
 				uniqueActions[actionName] = true
 			}
 
 			// Sort for consistency
-			sort.Strings(repoPolicy.AllowedActions)
+			if e.PolicyMode == "allow" {
+				sort.Strings(repoPolicy.AllowedActions)
+			} else if e.PolicyMode == "deny" {
+				sort.Strings(repoPolicy.DeniedActions)
+			}
+
 			policyConfig.CustomRules[repo] = repoPolicy
 		} else {
 			// Just add to global actions list
@@ -69,10 +99,18 @@ func (e *ActionExporter) GeneratePolicyFromActions(actionsMap map[string][]githu
 	}
 
 	// Convert unique actions map to sorted slice
+	uniqueActionsList := make([]string, 0, len(uniqueActions))
 	for action := range uniqueActions {
-		policyConfig.AllowedActions = append(policyConfig.AllowedActions, action)
+		uniqueActionsList = append(uniqueActionsList, action)
 	}
-	sort.Strings(policyConfig.AllowedActions)
+	sort.Strings(uniqueActionsList)
+
+	// Add to appropriate list in policy config
+	if e.PolicyMode == "allow" {
+		policyConfig.AllowedActions = uniqueActionsList
+	} else if e.PolicyMode == "deny" {
+		policyConfig.DeniedActions = uniqueActionsList
+	}
 
 	return policyConfig, nil
 }
@@ -97,16 +135,22 @@ func (e *ActionExporter) ExportPolicyFile(config *policy.PolicyConfig) error {
 	header := `# GitHub Action Control Policy
 # Generated automatically by action-control
 # 
-# This file defines which GitHub Actions are allowed in your repositories.
+# This file defines policy for GitHub Actions in your repositories.
 # 
-# allowed_actions: Actions allowed in all repositories
+# Policy can work in two modes:
+#   - allow: Only listed actions are allowed (default)
+#   - deny: All actions are allowed except listed ones
+# 
+# allowed_actions: Actions explicitly allowed (used in allow mode)
+# denied_actions: Actions explicitly denied (used in deny mode)
+# policy_mode: Which mode to use ("allow" or "deny")
 # excluded_repos: Repositories excluded from policy enforcement
 # custom_rules: Repository-specific action rules
 
 `
 	fileContent := header + string(data)
 
-	// Write to file using os.WriteFile instead of deprecated ioutil.WriteFile
+	// Write to file using os.WriteFile
 	if err := os.WriteFile(e.OutputPath, []byte(fileContent), 0644); err != nil {
 		return fmt.Errorf("failed to write policy file: %w", err)
 	}

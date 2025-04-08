@@ -62,6 +62,7 @@ func main() {
 	exportCmd.Flags().String("file", "policy.yaml", "Output file path for generated policy")
 	exportCmd.Flags().Bool("include-versions", false, "Include version tags in action references")
 	exportCmd.Flags().Bool("include-custom", false, "Generate custom rules for each repository")
+	exportCmd.Flags().String("policy-mode", "allow", "Policy mode: allow or deny") // Add this line
 
 	// Bind flags to viper
 	viper.BindPFlag("organization", rootCmd.PersistentFlags().Lookup("org"))
@@ -72,6 +73,7 @@ func main() {
 	viper.BindPFlag("export_file", exportCmd.Flags().Lookup("file"))
 	viper.BindPFlag("include_versions", exportCmd.Flags().Lookup("include-versions"))
 	viper.BindPFlag("include_custom", exportCmd.Flags().Lookup("include-custom"))
+	viper.BindPFlag("policy_mode", exportCmd.Flags().Lookup("policy-mode")) // Add this line
 
 	// Add commands to root
 	rootCmd.AddCommand(reportCmd)
@@ -264,7 +266,7 @@ func runEnforce() {
 	}
 
 	// Report results
-	report := formatter.FormatPolicyViolations(violations)
+	report := formatter.FormatPolicyViolations(violations, localPolicy.PolicyMode)
 	fmt.Println(report)
 
 	// Exit with error if violations found
@@ -293,6 +295,12 @@ func runExport() {
 	exporter.OutputPath = viper.GetString("export_file")
 	exporter.IncludeVersions = viper.GetBool("include_versions")
 	exporter.IncludeCustom = viper.GetBool("include_custom")
+	exporter.PolicyMode = viper.GetString("policy_mode") // Add this line
+
+	// Validate policy mode
+	if exporter.PolicyMode != "allow" && exporter.PolicyMode != "deny" {
+		log.Fatalf("Invalid policy mode: %s, must be 'allow' or 'deny'", exporter.PolicyMode)
+	}
 
 	client := github.NewClient(token)
 	ctx := context.Background()
@@ -336,9 +344,16 @@ func runExport() {
 		log.Fatalf("Error writing policy file: %v", err)
 	}
 
-	fmt.Printf("Successfully exported policy file to %s\n", exporter.OutputPath)
-	fmt.Printf("Found %d unique actions across %d repositories\n",
-		len(policyConfig.AllowedActions), len(githubActionsMap))
+	fmt.Printf("Successfully exported %s-mode policy file to %s\n", exporter.PolicyMode, exporter.OutputPath)
+
+	// Adjust the output message to use the correct field based on policy mode
+	if exporter.PolicyMode == "allow" {
+		fmt.Printf("Found %d allowed actions across %d repositories\n",
+			len(policyConfig.AllowedActions), len(githubActionsMap))
+	} else {
+		fmt.Printf("Found %d denied actions across %d repositories\n",
+			len(policyConfig.DeniedActions), len(githubActionsMap))
+	}
 }
 
 func initConfig() {
