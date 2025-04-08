@@ -27,6 +27,7 @@ runs:
     - ${{ github.repository }}
     - '--output'
     - ${{ inputs.output_format }}
-  env:
-    GITHUB_TOKEN: ${{ inputs.github_token }}
-    ACTION_CONTROL_POLICY_CONTENT: ${{ inputs.policy_content }}
+    - '--github-token'
+    - ${{ github.token }}
+    - '--policy-content'
+    - ${{ inputs.policy_content }}

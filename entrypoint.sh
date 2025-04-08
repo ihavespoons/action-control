@@ -1,27 +1,31 @@
 #!/bin/sh
-# filepath: /Users/ben.gittins/Code/personal/action-control/entrypoint.sh
 set -e
 
-# If policy content is provided as an environment variable, write it to a temporary file
-if [ -n "$ACTION_CONTROL_POLICY_CONTENT" ]; then
-  echo "Using policy content from environment variable"
-  # We'll set the --ignore-local-policy flag to true
-  IGNORE_FLAG="--ignore-local-policy"
+# Extract the command (enforce, report, export) and arguments
+CMD="$1"
+REPO="$3"
+OUTPUT_FORMAT="$5"
+GITHUB_TOKEN="$7"
+POLICY_CONTENT="$9"
+
+# Export GitHub token as environment variable
+if [ -n "$GITHUB_TOKEN" ]; then
+  export ACTION_CONTROL_GITHUB_TOKEN="$GITHUB_TOKEN"
 else
-  echo "No policy content provided in environment variable. Please provide ACTION_CONTROL_POLICY_CONTENT."
-  echo "Exiting..."
+  echo "GitHub token not provided"
   exit 1
 fi
 
-# Export the GitHub token with the expected name
-if [ -n "$GITHUB_TOKEN" ]; then
-  export ACTION_CONTROL_GITHUB_TOKEN="$GITHUB_TOKEN"
+# Check if policy content is provided
+if [ -n "$POLICY_CONTENT" ]; then
+  echo "Using policy content from command line argument"
+  # Create a temporary file for the policy content
+  TEMP_POLICY_FILE="/tmp/policy.yaml"
+  echo "$POLICY_CONTENT" > "$TEMP_POLICY_FILE"
+  
+  # Execute with temporary file and ignore local policy flag
+  exec /app/action-control "$CMD" --repo "$REPO" --output "$OUTPUT_FORMAT" --policy "$TEMP_POLICY_FILE" --ignore-local-policy
+else
+  echo "No policy content provided. Please provide policy content."
+  exit 1
 fi
-
-# Extract the command (enforce, report, export) from the first argument
-CMD="$1"
-shift
-
-# Run the action-control command with appropriate arguments - using fixed positions
-# We know the command structure is enforce --repo REPO --output FORMAT
-exec /app/action-control "$CMD" --repo "$2" --output "$4" $IGNORE_FLAG
