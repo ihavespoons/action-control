@@ -19,10 +19,9 @@ inputs:
     description: 'Output format for report (markdown or json)'
     required: false
     default: 'markdown'
-  policy_file:
-    description: 'Path to policy configuration file (for enforce command)'
-    required: false
-    default: 'policy.yaml'
+  policy_content:
+    description: 'Policy configuration content as a string (will be used exclusively, ignoring local policy files)'
+    required: true
 
 runs:
   using: 'docker'
@@ -35,9 +34,7 @@ runs:
     - ${{ inputs.repository }}
     - '--output'
     - ${{ inputs.output_format }}
-    - '--policy'
-    - ${{ inputs.policy_file }}
 
-# Conditionally add flags based on boolean inputs
 env:
   ACTION_CONTROL_GITHUB_TOKEN: ${{ inputs.github_token }}
+  ACTION_CONTROL_POLICY_CONTENT: ${{ inputs.policy_content }}

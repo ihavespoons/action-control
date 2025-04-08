@@ -42,8 +42,8 @@ func TestActionYaml(t *testing.T) {
 		t.Fatal("Inputs section is not properly formatted")
 	}
 
-	// Check required inputs - github_token is required, command is not in your actual file
-	requiredInputs := []string{"github_token", "organization", "repository", "output_format", "policy_file"}
+	// Updated required inputs - policy_content is required, not policy_file
+	requiredInputs := []string{"github_token", "organization", "repository", "output_format", "policy_content"}
 	for _, input := range requiredInputs {
 		inputConfig, exists := inputs[input].(map[string]interface{})
 		if !exists {
@@ -56,11 +56,22 @@ func TestActionYaml(t *testing.T) {
 		}
 	}
 
-	// Check that github_token is required
-	if githubToken, exists := inputs["github_token"].(map[string]interface{}); exists {
-		required, ok := githubToken["required"].(bool)
-		if !ok || !required {
-			t.Error("github_token input should be marked as required")
+	// Check that github_token and policy_content are required
+	requiredParams := []string{"github_token", "policy_content"}
+	for _, param := range requiredParams {
+		if inputConfig, exists := inputs[param].(map[string]interface{}); exists {
+			required, ok := inputConfig["required"].(bool)
+			if !ok || !required {
+				t.Errorf("%s input should be marked as required", param)
+			}
+		}
+	}
+
+	// Check that policy_content has the correct description
+	if policyContent, exists := inputs["policy_content"].(map[string]interface{}); exists {
+		description, ok := policyContent["description"].(string)
+		if !ok || !strings.Contains(description, "ignoring local policy files") {
+			t.Error("policy_content description should mention it ignores local policy files")
 		}
 	}
 
@@ -100,18 +111,26 @@ func TestActionYaml(t *testing.T) {
 		}
 	}
 
-	// Check that environment variables are set
+	// Check that environment variables are set correctly
 	env, ok := actionConfig["env"].(map[string]interface{})
 	if !ok {
 		t.Error("Action should have environment variables defined")
 	} else {
-		if _, exists := env["ACTION_CONTROL_GITHUB_TOKEN"]; !exists {
-			t.Error("ACTION_CONTROL_GITHUB_TOKEN environment variable should be defined")
+		// Check for required environment variables
+		requiredEnvVars := []string{
+			"ACTION_CONTROL_GITHUB_TOKEN",
+			"ACTION_CONTROL_POLICY_CONTENT",
+		}
+
+		for _, envVar := range requiredEnvVars {
+			if _, exists := env[envVar]; !exists {
+				t.Errorf("%s environment variable should be defined", envVar)
+			}
 		}
 	}
 }
 
-// TestDockerfile validates that the Dockerfile exists
+// TestDockerfile validates that the Dockerfile exists and has correct configuration
 func TestDockerfile(t *testing.T) {
 	dockerfilePath := "../Dockerfile"
 	if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
@@ -152,53 +171,83 @@ func TestDockerfile(t *testing.T) {
 	}
 }
 
-// Add test case to verify policy file handling in GitHub Action
-func TestActionProcessesPolicyFile(t *testing.T) {
-	// Find the action.yml file
-	actionYamlPath := "../action.yml"
-	if _, err := os.Stat(actionYamlPath); os.IsNotExist(err) {
-		t.Fatalf("action.yml file not found at %s", actionYamlPath)
+// Test the entrypoint.sh script
+func TestEntrypointScript(t *testing.T) {
+	// Check entrypoint script existence
+	entrypointPath := "../entrypoint.sh"
+	if _, err := os.Stat(entrypointPath); os.IsNotExist(err) {
+		t.Fatalf("entrypoint.sh file not found at %s", entrypointPath)
 	}
 
-	// Read the YAML file
+	// Read entrypoint script
+	data, err := os.ReadFile(entrypointPath)
+	if err != nil {
+		t.Fatalf("Failed to read entrypoint.sh: %v", err)
+	}
+
+	content := string(data)
+
+	// Essential elements that should be in the script
+	essentialPhrases := []string{
+		"ACTION_CONTROL_POLICY_CONTENT",
+		"IGNORE_FLAG",
+		"--ignore-local-policy",
+		"exec /app/action-control",
+	}
+
+	for _, phrase := range essentialPhrases {
+		if !strings.Contains(content, phrase) {
+			t.Errorf("entrypoint.sh should contain %q", phrase)
+		}
+	}
+
+	// Make sure script handles the policy content environment variable properly
+	if !strings.Contains(content, "if [ -n \"$ACTION_CONTROL_POLICY_CONTENT\" ]") {
+		t.Error("entrypoint.sh should check for ACTION_CONTROL_POLICY_CONTENT")
+	}
+}
+
+// TestEnvironmentVariableHandling verifies that the action uses environment variables correctly
+func TestEnvironmentVariableHandling(t *testing.T) {
+	// Find the action.yml file
+	actionYamlPath := "../action.yml"
 	data, err := os.ReadFile(actionYamlPath)
 	if err != nil {
 		t.Fatalf("Failed to read action.yml: %v", err)
 	}
 
-	// Parse the YAML
 	var actionConfig map[string]interface{}
 	if err := yaml.Unmarshal(data, &actionConfig); err != nil {
 		t.Fatalf("Failed to parse action.yml: %v", err)
 	}
 
-	// Check the runs section for proper policy file handling
-	runs, ok := actionConfig["runs"].(map[string]interface{})
+	// Check that policy_content input is mapped to the environment variable
+	env, ok := actionConfig["env"].(map[string]interface{})
 	if !ok {
-		t.Fatal("Runs section is not properly formatted")
+		t.Fatal("Action env section is missing or not properly formatted")
 	}
 
-	args, ok := runs["args"].([]interface{})
-	if !ok {
-		t.Fatal("Args section is not properly formatted")
+	policyContentEnv, exists := env["ACTION_CONTROL_POLICY_CONTENT"].(string)
+	if !exists {
+		t.Fatal("ACTION_CONTROL_POLICY_CONTENT environment variable should be defined")
 	}
 
-	// Check for policy flag
-	hasPolicyFlag := false
-	for i, arg := range args {
-		if arg == "--policy" && i+1 < len(args) {
-			hasPolicyFlag = true
-
-			// Verify that the policy file is correctly configured
-			policyRef, ok := args[i+1].(string)
-			if !ok || !strings.Contains(policyRef, "policy_file") {
-				t.Errorf("Policy file reference is not properly set up, got: %v", args[i+1])
-			}
-			break
-		}
+	// Check that it references the policy_content input
+	if !strings.Contains(policyContentEnv, "inputs.policy_content") {
+		t.Errorf("ACTION_CONTROL_POLICY_CONTENT should reference inputs.policy_content, got: %s", policyContentEnv)
 	}
 
-	if !hasPolicyFlag {
-		t.Error("GitHub Action args should include --policy flag")
+	// Check that entrypoint script exists and has the correct behavior
+	scriptPath := "../entrypoint.sh"
+	scriptData, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("Failed to read entrypoint.sh: %v", err)
+	}
+
+	scriptContent := string(scriptData)
+
+	// Make sure the script exits if no policy content is provided
+	if !strings.Contains(scriptContent, "exit 1") {
+		t.Error("entrypoint.sh should exit with error if ACTION_CONTROL_POLICY_CONTENT is not provided")
 	}
 }
