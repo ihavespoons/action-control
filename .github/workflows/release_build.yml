@@ -28,6 +28,7 @@ jobs:
   
   build-docker:
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,9 +42,16 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Download artifacts
+      - name: Download linux amd64
         uses: actions/download-artifact@v4
         with:
+          name: action-control-linux-amd64
+          path: ${{ github.workspace }}/artifacts
+
+      - name: Download linux arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: action-control-linux-arm64
           path: ${{ github.workspace }}/artifacts
 
       - name: Set up Docker Buildx
