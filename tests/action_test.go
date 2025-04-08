@@ -141,3 +141,54 @@ func TestDockerfile(t *testing.T) {
 		}
 	}
 }
+
+// Add test case to verify policy file handling in GitHub Action
+func TestActionProcessesPolicyFile(t *testing.T) {
+	// Find the action.yml file
+	actionYamlPath := "../action.yml"
+	if _, err := os.Stat(actionYamlPath); os.IsNotExist(err) {
+		t.Fatalf("action.yml file not found at %s", actionYamlPath)
+	}
+
+	// Read the YAML file
+	data, err := os.ReadFile(actionYamlPath)
+	if err != nil {
+		t.Fatalf("Failed to read action.yml: %v", err)
+	}
+
+	// Parse the YAML
+	var actionConfig map[string]interface{}
+	if err := yaml.Unmarshal(data, &actionConfig); err != nil {
+		t.Fatalf("Failed to parse action.yml: %v", err)
+	}
+
+	// Check the runs section for proper policy file handling
+	runs, ok := actionConfig["runs"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Runs section is not properly formatted")
+	}
+
+	args, ok := runs["args"].([]interface{})
+	if !ok {
+		t.Fatal("Args section is not properly formatted")
+	}
+
+	// Check for policy flag
+	hasPolicyFlag := false
+	for i, arg := range args {
+		if arg == "--policy" && i+1 < len(args) {
+			hasPolicyFlag = true
+
+			// Verify that the policy file is correctly configured
+			policyRef, ok := args[i+1].(string)
+			if !ok || !strings.Contains(policyRef, "policy_file") {
+				t.Errorf("Policy file reference is not properly set up, got: %v", args[i+1])
+			}
+			break
+		}
+	}
+
+	if !hasPolicyFlag {
+		t.Error("GitHub Action args should include --policy flag")
+	}
+}
