@@ -10,6 +10,10 @@ inputs:
     description: 'GitHub token for API access'
     default: ${{ github.token }}
     required: false
+  github_repository:
+    description: 'GitHub repository to enforce policy on'
+    required: false
+    default: ${{ github.repository }}
   output_format:
     description: 'Output format for report (markdown or json)'
     required: false
@@ -24,10 +28,10 @@ runs:
   args:
     - enforce
     - '--repo'
-    - ${{ github.repository }}
+    - ${{ inputs.github_repository }}
     - '--output'
     - ${{ inputs.output_format }}
     - '--github-token'
-    - ${{ github.token }}
+    - ${{ inputs.github_token }}
     - '--policy-content'
     - ${{ inputs.policy_content }}
