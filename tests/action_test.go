@@ -171,9 +171,9 @@ func testActionRuns(t *testing.T) {
 
 	// Check for required arguments and values
 	requiredArgs := map[string]string{
-		"--repo":           "${{ github.repository }}",
+		"--repo":           "${{ inputs.github_repository }}",
 		"--output":         "${{ inputs.output_format }}",
-		"--github-token":   "${{ github.token }}",
+		"--github-token":   "${{ inputs.github_token }}",
 		"--policy-content": "${{ inputs.policy_content }}",
 	}
 
