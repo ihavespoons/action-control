@@ -1,8 +1,10 @@
 name: SLSA Go releaser
 on:
-  release:
-    types: [created, published]
-
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+  workflow_dispatch:
 permissions: read-all
 
 jobs:
