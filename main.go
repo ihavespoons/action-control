@@ -21,13 +21,13 @@ func main() {
 
 	var rootCmd = &cobra.Command{
 		Use:   "action-control",
-		Short: "A CLI tool to report and enforce GitHub Actions usage policies",
+		Short: "A CLI tool to enforce a Github actions policy that you create",
 	}
 
 	// Report command - keeps the existing functionality
 	var reportCmd = &cobra.Command{
 		Use:   "report",
-		Short: "Report on GitHub Actions used in repositories",
+		Short: "Report on GitHub Actions used in repositories across your organization.",
 		Run: func(cmd *cobra.Command, args []string) {
 			runReport()
 		},
