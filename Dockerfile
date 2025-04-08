@@ -4,7 +4,7 @@ ARG TARGETARCH
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
-COPY artifacts/action-control-linux-${TARGETARCH} /app/action-control
+COPY ./artifacts/action-control-linux-${TARGETARCH} /app/action-control
 
 # Create entrypoint script to handle boolean flags
 COPY entrypoint.sh /entrypoint.sh
