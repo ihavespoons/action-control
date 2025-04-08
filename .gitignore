@@ -1,5 +1,6 @@
 # Project specific files
 .idea/
+.vscode/
 config.yaml
 policy.yaml
 
