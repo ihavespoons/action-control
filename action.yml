@@ -1,0 +1,43 @@
+name: 'Action Control'
+description: 'Enforce Github Action policy'
+author: 'Ben Gittins'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+  organization:
+    description: 'GitHub organization to analyze'
+    required: false
+  repository:
+    description: 'Specific repository to analyze (format: owner/repo)'
+    required: false
+  output_format:
+    description: 'Output format for report (markdown or json)'
+    required: false
+    default: 'markdown'
+  policy_file:
+    description: 'Path to policy configuration file (for enforce command)'
+    required: false
+    default: 'policy.yaml'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - enforce
+    - '--org'
+    - ${{ inputs.organization }}
+    - '--repo'
+    - ${{ inputs.repository }}
+    - '--output'
+    - ${{ inputs.output_format }}
+    - '--policy'
+    - ${{ inputs.policy_file }}
+
+# Conditionally add flags based on boolean inputs
+env:
+  ACTION_CONTROL_GITHUB_TOKEN: ${{ inputs.github_token }}
