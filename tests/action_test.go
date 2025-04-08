@@ -42,8 +42,8 @@ func TestActionYaml(t *testing.T) {
 		t.Fatal("Inputs section is not properly formatted")
 	}
 
-	// Updated required inputs - removed organization input
-	requiredInputs := []string{"github_token", "output_format", "policy_content"}
+	// Updated required inputs
+	requiredInputs := []string{"output_format", "policy_content"}
 	for _, input := range requiredInputs {
 		inputConfig, exists := inputs[input].(map[string]interface{})
 		if !exists {
@@ -57,7 +57,7 @@ func TestActionYaml(t *testing.T) {
 	}
 
 	// Check that github_token and policy_content are required
-	requiredParams := []string{"github_token", "policy_content"}
+	requiredParams := []string{"policy_content"}
 	for _, param := range requiredParams {
 		if inputConfig, exists := inputs[param].(map[string]interface{}); exists {
 			required, ok := inputConfig["required"].(bool)
@@ -113,18 +113,18 @@ func TestActionYaml(t *testing.T) {
 		}
 	}
 
-	// Check that environment variables are set correctly
-	env, ok := actionConfig["env"].(map[string]interface{})
+	// Check that environment variables are set correctly in the runs section
+	env, ok := runs["env"].(map[string]interface{})
 	if !ok {
-		t.Error("Action should have environment variables defined")
+		t.Error("Action should have environment variables defined in the runs section")
 	} else {
 		// Check for required environment variables
 		requiredEnvVars := []string{
-			"ACTION_CONTROL_GITHUB_TOKEN",
+			"GITHUB_TOKEN",
 			"ACTION_CONTROL_POLICY_CONTENT",
 		}
 
-		for _, envVar := requiredEnvVars {
+		for _, envVar := range requiredEnvVars {
 			if _, exists := env[envVar]; !exists {
 				t.Errorf("%s environment variable should be defined", envVar)
 			}
@@ -223,10 +223,16 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 		t.Fatalf("Failed to parse action.yml: %v", err)
 	}
 
-	// Check that policy_content input is mapped to the environment variable
-	env, ok := actionConfig["env"].(map[string]interface{})
+	// Get the runs section
+	runs, ok := actionConfig["runs"].(map[string]interface{})
 	if !ok {
-		t.Fatal("Action env section is missing or not properly formatted")
+		t.Fatal("Runs section is not properly formatted")
+	}
+
+	// Check that policy_content input is mapped to the environment variable
+	env, ok := runs["env"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Action env section is missing or not properly formatted in the runs section")
 	}
 
 	policyContentEnv, exists := env["ACTION_CONTROL_POLICY_CONTENT"].(string)

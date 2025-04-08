@@ -13,6 +13,11 @@ else
   exit 1
 fi
 
+# Export the GitHub token with the expected name
+if [ -n "$GITHUB_TOKEN" ]; then
+  export ACTION_CONTROL_GITHUB_TOKEN="$GITHUB_TOKEN"
+fi
+
 # Extract the command (enforce, report, export) from the first argument
 CMD="$1"
 shift

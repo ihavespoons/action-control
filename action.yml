@@ -8,7 +8,8 @@ branding:
 inputs:
   github_token:
     description: 'GitHub token for API access'
-    required: true
+    default: ${{ github.token }}
+    required: false
   output_format:
     description: 'Output format for report (markdown or json)'
     required: false
@@ -26,7 +27,6 @@ runs:
     - ${{ github.repository }}
     - '--output'
     - ${{ inputs.output_format }}
-
-env:
-  ACTION_CONTROL_GITHUB_TOKEN: ${{ inputs.github_token }}
-  ACTION_CONTROL_POLICY_CONTENT: ${{ inputs.policy_content }}
+  env:
+    GITHUB_TOKEN: ${{ inputs.github_token }}
+    ACTION_CONTROL_POLICY_CONTENT: ${{ inputs.policy_content }}
