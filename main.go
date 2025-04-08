@@ -17,23 +17,24 @@ import (
 )
 
 func main() {
+	// Initialize configuration before command execution
 	cobra.OnInitialize(initConfig)
 
+	// Define root command
 	var rootCmd = &cobra.Command{
 		Use:   "action-control",
 		Short: "A CLI tool to enforce a Github actions policy that you create",
 	}
 
-	// Report command - keeps the existing functionality
+	// Define subcommands
 	var reportCmd = &cobra.Command{
 		Use:   "report",
-		Short: "Report on GitHub Actions used in repositories across your organization.",
+		Short: "Report on GitHub Actions used in repositories across your organization",
 		Run: func(cmd *cobra.Command, args []string) {
 			runReport()
 		},
 	}
 
-	// Enforce command - new functionality
 	var enforceCmd = &cobra.Command{
 		Use:   "enforce",
 		Short: "Enforce policy on GitHub Actions usage",
@@ -42,7 +43,6 @@ func main() {
 		},
 	}
 
-	// Export command - generate a policy file from discovered actions
 	var exportCmd = &cobra.Command{
 		Use:   "export",
 		Short: "Export a policy file based on discovered GitHub Actions",
@@ -51,38 +51,40 @@ func main() {
 		},
 	}
 
-	// Add flags to commands
+	// Configure global flags available to all commands
 	rootCmd.PersistentFlags().String("config", "", "config file (default is ./config.yaml)")
 	rootCmd.PersistentFlags().String("org", "", "GitHub organization name")
 	rootCmd.PersistentFlags().String("repo", "", "Specific repository to check (format: owner/repo)")
 	rootCmd.PersistentFlags().String("output", "", "Output format (markdown or json)")
 
+	// Configure command-specific flags
 	enforceCmd.Flags().String("policy", "policy.yaml", "Path to policy configuration file")
-	enforceCmd.Flags().Bool("ignore-local-policy", false, "Ignore local policy files and only use provided policy") // Add this line
-	enforceCmd.Flags().MarkHidden("ignore-local-policy")                                                            // Hide this flag from help output
+	enforceCmd.Flags().Bool("ignore-local-policy", false, "Ignore local policy files and only use provided policy")
+	enforceCmd.Flags().MarkHidden("ignore-local-policy") // Hidden flag for internal use
 
 	exportCmd.Flags().String("file", "policy.yaml", "Output file path for generated policy")
 	exportCmd.Flags().Bool("include-versions", false, "Include version tags in action references")
 	exportCmd.Flags().Bool("include-custom", false, "Generate custom rules for each repository")
-	exportCmd.Flags().String("policy-mode", "allow", "Policy mode: allow or deny") // Add this line
+	exportCmd.Flags().String("policy-mode", "allow", "Policy mode: allow or deny")
 
-	// Bind flags to viper
+	// Bind flags to viper to enable config file and environment variable usage
 	viper.BindPFlag("organization", rootCmd.PersistentFlags().Lookup("org"))
 	viper.BindPFlag("repository", rootCmd.PersistentFlags().Lookup("repo"))
 	viper.BindPFlag("output_format", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 	viper.BindPFlag("policy_file", enforceCmd.Flags().Lookup("policy"))
-	viper.BindPFlag("ignore_local_policy", enforceCmd.Flags().Lookup("ignore-local-policy")) // Add this line
+	viper.BindPFlag("ignore_local_policy", enforceCmd.Flags().Lookup("ignore-local-policy"))
 	viper.BindPFlag("export_file", exportCmd.Flags().Lookup("file"))
 	viper.BindPFlag("include_versions", exportCmd.Flags().Lookup("include-versions"))
 	viper.BindPFlag("include_custom", exportCmd.Flags().Lookup("include-custom"))
-	viper.BindPFlag("policy_mode", exportCmd.Flags().Lookup("policy-mode")) // Add this line
+	viper.BindPFlag("policy_mode", exportCmd.Flags().Lookup("policy-mode"))
 
-	// Add commands to root
+	// Add subcommands to root command
 	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(enforceCmd)
 	rootCmd.AddCommand(exportCmd)
 
+	// Execute command
 	if err := rootCmd.Execute(); err != nil {
 		log.Println(err)
 		os.Exit(1)
@@ -90,33 +92,38 @@ func main() {
 }
 
 func runReport() {
+	// Validate GitHub token
 	token := viper.GetString("github_token")
 	if token == "" {
 		log.Fatal("GitHub token not provided. Set it in config.yaml or as GITHUB_TOKEN environment variable.")
 	}
 
-	// Get org and repo parameters
+	// Get target organization or repository
 	org := viper.GetString("organization")
 	specificRepo := viper.GetString("repository")
 
-	// Validate inputs
+	// At least one target must be specified
 	if org == "" && specificRepo == "" {
 		log.Fatal("Either organization (--org) or specific repository (--repo) must be provided.")
 	}
 
+	// Set default output format if not specified
 	outputFormat := viper.GetString("output_format")
 	if outputFormat == "" {
 		outputFormat = "markdown"
 	}
 
+	// Initialize GitHub API client
 	client := github.NewClient(token)
 	ctx := context.Background()
 
+	// Map to store discovered actions by repository
 	githubActionsMap := make(map[string][]github.Action)
 	var err error
 
+	// Fetch actions from GitHub
 	if specificRepo != "" {
-		// Handle single repository case
+		// Scan a single repository
 		parts := strings.Split(specificRepo, "/")
 		if len(parts) != 2 {
 			log.Fatalf("Invalid repository format. Use 'owner/repo' format.")
@@ -132,7 +139,7 @@ func runReport() {
 			githubActionsMap[specificRepo] = actions
 		}
 	} else {
-		// Organization-wide scan
+		// Scan an entire organization
 		fmt.Printf("Scanning repositories in %s organization...\n", org)
 		githubActionsMap, err = client.ActionsForOrg(ctx, org)
 		if err != nil {
@@ -140,7 +147,7 @@ func runReport() {
 		}
 	}
 
-	// Convert from github.Action to formatter.Action
+	// Convert GitHub actions to formatter-compatible structure
 	actionsMap := make(map[string][]formatter.Action)
 	for repo, actions := range githubActionsMap {
 		formatterActions := make([]formatter.Action, len(actions))
@@ -153,6 +160,7 @@ func runReport() {
 		actionsMap[repo] = formatterActions
 	}
 
+	// Format and output the results
 	var result string
 	switch outputFormat {
 	case "json":
@@ -171,29 +179,30 @@ func runReport() {
 }
 
 func runEnforce() {
+	// Validate GitHub token
 	token := viper.GetString("github_token")
 	if token == "" {
 		log.Fatal("GitHub token not provided. Set it in config.yaml or as GITHUB_TOKEN environment variable.")
 	}
 
-	// Get org and repo parameters
+	// Get target organization or repository
 	org := viper.GetString("organization")
 	specificRepo := viper.GetString("repository")
 
-	// Validate inputs
+	// At least one target must be specified
 	if org == "" && specificRepo == "" {
 		log.Fatal("Either organization (--org) or specific repository (--repo) must be provided.")
 	}
 
-	// Check if we should use policy content from environment variable
+	// Determine policy source: environment variable or file
 	policyContent := os.Getenv("ACTION_CONTROL_POLICY_CONTENT")
 	ignoreLocalPolicy := viper.GetBool("ignore_local_policy")
 
 	var localPolicy *policy.PolicyConfig
 	var err error
 
+	// Handle policy from environment variable with highest priority when flag is set
 	if policyContent != "" && ignoreLocalPolicy {
-		// Use policy content from environment variable
 		log.Println("Using policy from environment variable")
 
 		// Create a temporary file for the policy content
@@ -201,41 +210,44 @@ func runEnforce() {
 		if err != nil {
 			log.Fatalf("Error creating temporary policy file: %v", err)
 		}
-		defer os.Remove(tmpFile.Name()) // Clean up
+		defer os.Remove(tmpFile.Name()) // Clean up after we're done
 
-		// Write the policy content to the temporary file
+		// Write content to temporary file
 		if _, err := tmpFile.WriteString(policyContent); err != nil {
 			tmpFile.Close()
 			log.Fatalf("Error writing to temporary policy file: %v", err)
 		}
 		tmpFile.Close()
 
-		// Load the policy from the temporary file
+		// Load policy configuration from temporary file
 		localPolicy, err = policy.LoadPolicyConfig(tmpFile.Name())
 		if err != nil {
 			log.Fatalf("Error loading policy from environment variable: %v", err)
 		}
 	} else {
-		// Use policy file
+		// Use policy from file
 		policyFile := viper.GetString("policy_file")
 		if policyFile == "" {
 			policyFile = "policy.yaml"
 		}
 
-		// Load local policy
+		// Load policy configuration from file
 		localPolicy, err = policy.LoadPolicyConfig(policyFile)
 		if err != nil {
 			log.Fatalf("Error loading policy file: %v", err)
 		}
 	}
 
+	// Initialize GitHub API client
 	client := github.NewClient(token)
 	ctx := context.Background()
 
+	// Map to store discovered actions by repository
 	githubActionsMap := make(map[string][]github.Action)
 
+	// Fetch actions from GitHub
 	if specificRepo != "" {
-		// Handle single repository case
+		// Scan a single repository
 		parts := strings.Split(specificRepo, "/")
 		if len(parts) != 2 {
 			log.Fatalf("Invalid repository format. Use 'owner/repo' format.")
@@ -251,7 +263,7 @@ func runEnforce() {
 			githubActionsMap[specificRepo] = actions
 		}
 	} else {
-		// Organization-wide scan
+		// Scan an entire organization
 		fmt.Printf("Scanning repositories in %s organization and enforcing policy...\n", org)
 		githubActionsMap, err = client.ActionsForOrg(ctx, org)
 		if err != nil {
@@ -259,7 +271,7 @@ func runEnforce() {
 		}
 	}
 
-	// Track policy violations
+	// Track policy violations found
 	violations := make(map[string][]string)
 
 	// Check each repository against policy
@@ -272,19 +284,19 @@ func runEnforce() {
 		owner := parts[0]
 		repoName := parts[1]
 
-		// Try to load repo-specific policy
+		// Use local policy as base
 		var repoPolicy *policy.PolicyConfig
-		repoPolicy = localPolicy // Start with local policy
+		repoPolicy = localPolicy
 
-		if !ignoreLocalPolicy { // Add this block
-			// Try to get repo policy file if it exists
+		// Check for repository-specific policy if not ignoring local policies
+		if !ignoreLocalPolicy {
 			repoPolicyContent, err := client.GetRepositoryContent(ctx, owner, repoName, ".github/action-control-policy.yaml")
 			if err == nil && len(repoPolicyContent) > 0 {
-				// Merge with local policy
+				// Merge repository policy with local policy
 				repoPolicy, err = policy.MergeRepoPolicy(localPolicy, repoPolicyContent, repoFullName)
 				if err != nil {
 					log.Printf("Warning: Could not parse policy file in repository %s: %v", repoFullName, err)
-					// Fall back to local policy
+					// Fall back to local policy on error
 					repoPolicy = localPolicy
 				}
 			}
@@ -296,58 +308,62 @@ func runEnforce() {
 			actionStrings[i] = action.Uses
 		}
 
-		// Check compliance
+		// Check actions against policy
 		repoViolations, compliant := policy.CheckActionCompliance(repoPolicy, repoFullName, actionStrings)
 		if !compliant {
 			violations[repoFullName] = repoViolations
 		}
 	}
 
-	// Report results
+	// Generate and print report
 	report := formatter.FormatPolicyViolations(violations, localPolicy.PolicyMode)
 	fmt.Println(report)
 
-	// Exit with error if violations found
+	// Exit with error code if violations found
 	if len(violations) > 0 {
 		os.Exit(1)
 	}
 }
 
 func runExport() {
+	// Validate GitHub token
 	token := viper.GetString("github_token")
 	if token == "" {
 		log.Fatal("GitHub token not provided. Set it in config.yaml or as GITHUB_TOKEN environment variable.")
 	}
 
-	// Get org and repo parameters
+	// Get target organization or repository
 	org := viper.GetString("organization")
 	specificRepo := viper.GetString("repository")
 
-	// Validate inputs
+	// At least one target must be specified
 	if org == "" && specificRepo == "" {
 		log.Fatal("Either organization (--org) or specific repository (--repo) must be provided.")
 	}
 
-	// Set up exporter with configuration
+	// Configure exporter with user preferences
 	exporter := export.NewExporter()
 	exporter.OutputPath = viper.GetString("export_file")
 	exporter.IncludeVersions = viper.GetBool("include_versions")
 	exporter.IncludeCustom = viper.GetBool("include_custom")
-	exporter.PolicyMode = viper.GetString("policy_mode") // Add this line
+	exporter.PolicyMode = viper.GetString("policy_mode")
 
 	// Validate policy mode
 	if exporter.PolicyMode != "allow" && exporter.PolicyMode != "deny" {
 		log.Fatalf("Invalid policy mode: %s, must be 'allow' or 'deny'", exporter.PolicyMode)
 	}
 
+	// Initialize GitHub API client
 	client := github.NewClient(token)
 	ctx := context.Background()
 
+	// Map to store discovered actions by repository
 	githubActionsMap := make(map[string][]github.Action)
 	var err error
 
+	// Fetch actions from GitHub
 	if specificRepo != "" {
-		// Handle single repository case
+		// Export from a single repository
 		parts := strings.Split(specificRepo, "/")
 		if len(parts) != 2 {
 			log.Fatalf("Invalid repository format. Use 'owner/repo' format.")
@@ -363,7 +379,7 @@ func runExport() {
 			githubActionsMap[specificRepo] = actions
 		}
 	} else {
-		// Organization-wide scan
+		// Export from an entire organization
 		fmt.Printf("Scanning repositories in %s organization for actions...\n", org)
 		githubActionsMap, err = client.ActionsForOrg(ctx, org)
 		if err != nil {
@@ -382,9 +398,10 @@ func runExport() {
 		log.Fatalf("Error writing policy file: %v", err)
 	}
 
+	// Print success message
 	fmt.Printf("Successfully exported %s-mode policy file to %s\n", exporter.PolicyMode, exporter.OutputPath)
 
-	// Adjust the output message to use the correct field based on policy mode
+	// Show summary based on policy mode
 	if exporter.PolicyMode == "allow" {
 		fmt.Printf("Found %d allowed actions across %d repositories\n",
 			len(policyConfig.AllowedActions), len(githubActionsMap))
@@ -394,35 +411,33 @@ func runExport() {
 	}
 }
 
+// initConfig reads configuration from file and environment variables
 func initConfig() {
 	if configFile := viper.GetString("config"); configFile != "" {
-		// If a specific config file is provided, use it
+		// Use specific config file if provided
 		viper.SetConfigFile(configFile)
 	} else {
-		// Default config file name and type
+		// Set default config name and type
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")
 
-		// Add config search paths in order of precedence:
-		// 1. Current directory (highest priority)
-		viper.AddConfigPath(".")
-		// 2. User's .config directory (conventional XDG config location)
-		viper.AddConfigPath("$HOME/.config/action-control")
-		// 3. User's home directory (fallback)
-		viper.AddConfigPath("$HOME")
+		// Add search paths in order of precedence
+		viper.AddConfigPath(".")                            // Current directory (highest priority)
+		viper.AddConfigPath("$HOME/.config/action-control") // XDG config location
+		viper.AddConfigPath("$HOME")                        // User's home directory (fallback)
 	}
 
 	// Enable environment variable overrides
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("ACTION_CONTROL")
 
-	// Try to read the config file, but continue if not found
+	// Try to read config file, but continue if not found
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found, using defaults
+			// Config file not found is okay, just use defaults
 			log.Println("No configuration file found, using defaults and environment variables")
 		} else {
-			// Config file was found but another error occurred
+			// Other config errors should be reported
 			log.Printf("Warning: Error reading config file: %v", err)
 		}
 	} else {
