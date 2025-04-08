@@ -126,19 +126,29 @@ func TestDockerfile(t *testing.T) {
 
 	content := string(data)
 
-	// Check for essential components
+	// Check for essential components based on current Dockerfile
 	essentialPhrases := []string{
-		"FROM golang:",
+		"FROM alpine:",
 		"WORKDIR /app",
 		"COPY",
-		"go build",
-		"RUN",
+		"RUN apk --no-cache add ca-certificates",
+		"ENTRYPOINT",
 	}
 
 	for _, phrase := range essentialPhrases {
 		if !strings.Contains(content, phrase) {
 			t.Errorf("Dockerfile should contain %q", phrase)
 		}
+	}
+
+	// Check for entrypoint script handling
+	if !strings.Contains(content, "entrypoint.sh") {
+		t.Error("Dockerfile should reference entrypoint.sh")
+	}
+
+	// Check for build architecture handling
+	if !strings.Contains(content, "BUILDARCH") {
+		t.Error("Dockerfile should use BUILDARCH argument")
 	}
 }
 
