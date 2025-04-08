@@ -8,12 +8,7 @@ branding:
 inputs:
   github_token:
     description: 'GitHub token for API access'
-    required: true
-  organization:
-    description: 'GitHub organization to analyze'
-    required: false
-  repository:
-    description: 'Specific repository to analyze (format: owner/repo)'
+    default: ${{ github.token }}
     required: false
   output_format:
     description: 'Output format for report (markdown or json)'
@@ -28,13 +23,11 @@ runs:
   image: ihavespoons/action-control:latest
   args:
     - enforce
-    - '--org'
-    - ${{ inputs.organization }}
     - '--repo'
-    - ${{ inputs.repository }}
+    - ${{ github.repository }}
     - '--output'
     - ${{ inputs.output_format }}
-
-env:
-  ACTION_CONTROL_GITHUB_TOKEN: ${{ inputs.github_token }}
-  ACTION_CONTROL_POLICY_CONTENT: ${{ inputs.policy_content }}
+    - '--github-token'
+    - ${{ github.token }}
+    - '--policy-content'
+    - ${{ inputs.policy_content }}
