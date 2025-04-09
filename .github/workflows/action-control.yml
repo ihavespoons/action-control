@@ -13,4 +13,5 @@ jobs:
         uses: ihavespoons/action-control@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_repository: ${{ github.repository }}
           policy_content: ${{ vars.ACTION_CONTROL_POLICY_CONTENT}}
