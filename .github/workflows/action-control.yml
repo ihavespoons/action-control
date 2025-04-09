@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Enforce GitHub Actions Policy
-        uses: ihavespoons/action-control@ihavespoons-configure-action
+        uses: ihavespoons/action-control@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_repository: ${{ github.repository }}
