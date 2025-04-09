@@ -2,8 +2,8 @@ name: Enforce GitHub Actions Policy
 
 on:
   pull_request:
-      branches: [main]  # Trigger on pull requests to the main branch
-  workflow_dispatch:  # Allow manual trigger
+      branches: [main]
+  workflow_dispatch: 
 
 jobs:
   enforce-policy:
