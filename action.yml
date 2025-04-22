@@ -1,4 +1,4 @@
-name: 'Github Action Control'
+name: 'action-control'
 description: 'Enforce Github Action policy'
 author: 'ihavespoons'
 branding:
