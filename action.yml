@@ -1,6 +1,6 @@
-name: 'Action Control'
+name: 'Github Action Control'
 description: 'Enforce Github Action policy'
-author: 'Ben Gittins'
+author: 'ihavespoons'
 branding:
   icon: 'shield'
   color: 'blue'
